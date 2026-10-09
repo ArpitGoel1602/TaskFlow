@@ -31,5 +31,5 @@ const activitySchema = new Schema(
   },
   { timestamps: true }
 );
-
-export default model("Activity", activitySchema);
+const Activity = model("Activity", activitySchema);
+export default Activity
