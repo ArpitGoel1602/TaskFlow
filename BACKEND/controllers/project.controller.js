@@ -3,6 +3,7 @@ import Project from '../models/project.model.js';
 import Task from '../models/task.model.js';
 import Comment from '../models/comment.model.js';
 import Activity from '../models/activity.model.js';
+import User from '../models/user.model.js';
 
 const validId = (id) => mongoose.isValidObjectId(id);
 
@@ -134,4 +135,71 @@ export const deleteProject = async (req, res) => {
   await project.deleteOne();
 
   res.json({ success: true, message: 'Project deleted successfully' });
+};
+
+export const addMember = async (req, res) => {
+  const { id } = req.params;
+  const { userId } = req.body;
+
+  if (!validId(id) || !validId(userId)) {
+    return res.status(400).json({ success: false, message: 'Invalid ID' });
+  }
+
+  const project = await Project.findById(id);
+
+  if (!project || project.owner.toString() !== req.userId) {
+    return res.status(403).json({ success: false, message: 'Only the project owner can add members' });
+  }
+
+  const userToAdd = await User.findById(userId).select('name email');
+  if (!userToAdd) {
+    return res.status(404).json({ success: false, message: 'User not found' });
+  }
+
+  if (project.members.some((m) => m.toString() === userId)) {
+    return res.status(409).json({ success: false, message: 'User is already a member' });
+  }
+
+  project.members.push(userId);
+  await project.save();
+
+  await Activity.create({
+    projectId: project._id,
+    userId: req.userId,
+    action: 'member_added',
+    description: `Added ${userToAdd.name} to the project`,
+  });
+
+  const updated = await Project.findById(id)
+    .populate('owner', 'name email')
+    .populate('members', 'name email');
+
+  res.json({ success: true, project: updated });
+};
+
+export const removeMember = async (req, res) => {
+  const { id, userId } = req.params;
+
+  if (!validId(id) || !validId(userId)) {
+    return res.status(400).json({ success: false, message: 'Invalid ID' });
+  }
+
+  const project = await Project.findById(id);
+
+  if (!project || project.owner.toString() !== req.userId) {
+    return res.status(403).json({ success: false, message: 'Only the project owner can remove members' });
+  }
+
+  if (project.owner.toString() === userId) {
+    return res.status(400).json({ success: false, message: 'Cannot remove the project owner' });
+  }
+
+  project.members = project.members.filter((m) => m.toString() !== userId);
+  await project.save();
+
+  const updated = await Project.findById(id)
+    .populate('owner', 'name email')
+    .populate('members', 'name email');
+
+  res.json({ success: true, project: updated });
 };
